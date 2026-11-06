@@ -60,7 +60,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: ShellCheck
-        run: shellcheck -x --source-path=SCRIPTDIR install.sh local-install.sh bench/run.sh tests/install.sh scripts/generate-release-docs.sh scripts/prepare-release.sh scripts/pkg-version.sh tests/pkg-version.sh
+        run: shellcheck -x --source-path=SCRIPTDIR install.sh local-install.sh bench/run.sh bench/run-comparison.sh tests/install.sh scripts/generate-release-docs.sh scripts/prepare-release.sh scripts/pkg-version.sh tests/pkg-version.sh
       - name: Test install.sh
         run: bash tests/install.sh
       - name: Test pkg-version.sh

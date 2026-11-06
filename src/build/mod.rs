@@ -11,6 +11,7 @@ pub mod links;
 pub mod markdown;
 pub mod math;
 pub mod mermaid;
+mod names;
 pub mod og;
 pub mod redirects;
 pub mod search;
@@ -38,8 +39,9 @@ use crate::error::{PageError, Result};
 use crate::output::CommandOutput;
 use crate::templates;
 
-/// A rendered page (output path + HTML), or `None` when skipped (incremental).
-type RenderedPage = Option<(PathBuf, String)>;
+/// A rendered page (output path, HTML, whether a file already exists at that
+/// path), or `None` when skipped (incremental).
+type RenderedPage = Option<(PathBuf, String, bool)>;
 
 pub struct BuildOptions {
     pub include_drafts: bool,
@@ -1260,6 +1262,9 @@ fn build_site_inner(
         fs::remove_dir_all(&paths.output)?;
     }
     fs::create_dir_all(&paths.output)?;
+    // Deferred and parallel writes decide path collisions themselves, so they
+    // compare paths the way this file system does (case, Unicode form).
+    let folding = names::NameFolding::probe(&paths.output);
     step_timings.push((
         "Clean output".to_string(),
         step_start.elapsed().as_secs_f64() * 1000.0,
@@ -1721,6 +1726,9 @@ fn build_site_inner(
     let mut collection_nav_cache: HashMap<String, HashMap<String, serde_json::Value>> =
         HashMap::new();
     let mut render_errors = Diagnostics::new();
+    // Rendered item pages stay in memory until Step 12 post-processes them,
+    // so each is written once instead of written, read back and rewritten.
+    let mut deferred_pages: Vec<(PathBuf, String)> = Vec::new();
 
     for collection in &config.collections {
         if let Some(items) = all_collections.get(&collection.name) {
@@ -1969,22 +1977,25 @@ fn build_site_inner(
                     })?;
 
                     let output_path = url_to_output_path(&paths.output, &item.url);
-                    Ok(Some((output_path, html)))
+                    let exists = output_path.exists();
+                    Ok(Some((output_path, html, exists)))
                 })
                 .collect();
 
+            // A page whose path already holds a file (an incremental rebuild's
+            // previous output, a `public/` file) replaces it now, as before.
+            // The rest wait for Step 12, so a file found at their path then was
+            // written by a later step and keeps winning.
+            let mut write_now = Vec::new();
             for result in render_results {
                 match result {
-                    Ok(Some((output_path, html))) => {
-                        if let Some(parent) = output_path.parent() {
-                            fs::create_dir_all(parent)?;
-                        }
-                        fs::write(&output_path, html)?;
-                    }
+                    Ok(Some((path, html, true))) => write_now.push((path, html)),
+                    Ok(Some((path, html, false))) => deferred_pages.push((path, html)),
                     Ok(None) => {}
                     Err(d) => render_errors.push(*d),
                 }
             }
+            write_files_parallel(&write_now, folding)?;
         }
     }
 
@@ -2042,6 +2053,38 @@ fn build_site_inner(
             collection_index_pages.insert(name.clone(), index_items);
         }
     }
+
+    // Markdown copies of every item (Step 8's output) are built now and written
+    // on a background thread while Steps 4-7 render listings, feeds and the
+    // sitemap on this one. Index items were removed just above, as before.
+    let md_writer = {
+        let taxonomy_keys = content_model.taxonomy_keys();
+        let mut md_files: Vec<(PathBuf, String)> = Vec::new();
+        for collection in &config.collections {
+            if let Some(items) = all_collections.get(&collection.name) {
+                // Configured taxonomy keys plus the collection's declared custom
+                // schema fields; undeclared unknown keys stay out.
+                let mut published_keys = taxonomy_keys.clone();
+                published_keys.extend(content::schema::custom_field_names(config, collection));
+                md_files.par_extend(items.par_iter().map(|item| {
+                    let md_path = url_to_md_path(&paths.output, &item.url);
+                    let md_content = discovery::insert_markdown_pointer(
+                        &format!(
+                            "{}\n\n{}",
+                            content::generate_published_frontmatter(
+                                &item.frontmatter,
+                                &published_keys
+                            ),
+                            item.raw_body
+                        ),
+                        &discovery::markdown_pointer(config, &item.lang),
+                    );
+                    (md_path, md_content)
+                }));
+            }
+        }
+        BackgroundWrites::spawn(md_files, is_listing_md_name, folding)
+    };
 
     // Step 4: Render index page(s)
     progress.step("Rendering indexes");
@@ -2934,42 +2977,14 @@ fn build_site_inner(
         step_start.elapsed().as_secs_f64() * 1000.0,
     ));
 
-    // Step 8: Output raw markdown alongside HTML for each page
+    // Step 8: Output raw markdown alongside HTML for each page. The copies
+    // were built before Step 4 and written in the background meanwhile.
     progress.step("Writing markdown copies");
     let step_start = Instant::now();
-    let taxonomy_keys = content_model.taxonomy_keys();
-    for collection in &config.collections {
-        if let Some(items) = all_collections.get(&collection.name) {
-            // Configured taxonomy keys plus the collection's declared custom
-            // schema fields; undeclared unknown keys stay out.
-            let mut published_keys = taxonomy_keys.clone();
-            published_keys.extend(content::schema::custom_field_names(config, collection));
-            let md_results: Vec<(PathBuf, String)> = items
-                .par_iter()
-                .map(|item| {
-                    let md_path = url_to_md_path(&paths.output, &item.url);
-                    let md_content = discovery::insert_markdown_pointer(
-                        &format!(
-                            "{}\n\n{}",
-                            content::generate_published_frontmatter(
-                                &item.frontmatter,
-                                &published_keys
-                            ),
-                            item.raw_body
-                        ),
-                        &discovery::markdown_pointer(config, &item.lang),
-                    );
-                    (md_path, md_content)
-                })
-                .collect();
-
-            for (md_path, md_content) in md_results {
-                if let Some(parent) = md_path.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                fs::write(&md_path, md_content)?;
-            }
-        }
+    // An item's copy has always been written after Steps 4-7, so it replaces
+    // a listing's index.md or sitemap.md at the same path; restore that.
+    for (path, contents) in md_writer.finish()? {
+        fs::write(path, contents)?;
     }
 
     step_timings.push((
@@ -2996,8 +3011,17 @@ fn build_site_inner(
     // Step 9b: Generate redirect pages from aliases
     let step_start = Instant::now();
     let all_redirect_items: Vec<&ContentItem> = all_collections.values().flatten().collect();
-    let (redirect_count, alias_collisions) =
-        redirects::generate_redirects_with_diagnostics(config, &all_redirect_items, &paths.output)?;
+    let pending_pages: HashSet<std::borrow::Cow<'_, Path>> = deferred_pages
+        .iter()
+        .map(|(p, _)| folding.key(p.as_path()))
+        .collect();
+    let (redirect_count, alias_collisions) = redirects::generate_redirects_with_pending(
+        config,
+        &all_redirect_items,
+        &paths.output,
+        &|path: &Path| pending_pages.contains(&folding.key(path)),
+    )?;
+    drop(pending_pages);
     for d in alias_collisions {
         crate::output::human::warning_stderr(&d.message);
         warnings.push(d.message.clone());
@@ -3238,7 +3262,8 @@ fn build_site_inner(
         analytics: config.analytics.as_ref(),
         mermaid: config.build.mermaid,
     };
-    let mut link_check = post_process_html_files(&paths.output, &post_ctx)?;
+    let mut link_check =
+        post_process_html_files(&paths.output, &post_ctx, deferred_pages, folding)?;
     link_check.broken_links.extend(md_link_problems);
     {
         // Report problems against the file they were written in (markdown
@@ -3383,34 +3408,99 @@ struct HtmlPostProcessContext<'a> {
     mermaid: bool,
 }
 
+/// Pages post-processed (and written) per batch, so that only one batch of
+/// final HTML is in memory at a time.
+const POST_PROCESS_BATCH: usize = 1024;
+
+/// A post-processed page's link check, plus its path and final HTML when the
+/// file has to be (re)written.
+type PostProcessed = (links::PageRefCheck, Option<(PathBuf, String)>);
+
 /// Walk all `.html` files once, apply all post-processing transforms in memory, write once.
 /// Also extracts internal links for validation, eliminating a separate file walk.
+///
+/// `deferred_pages` are rendered pages not yet on disk (Step 3's item pages
+/// whose path held no file when they were rendered): they are post-processed in
+/// memory and written here for the first time, and count as valid link
+/// targets. A deferred page whose path a later step wrote meanwhile is
+/// dropped, so that later file still wins. Paths are compared with
+/// `folding`, the way the output file system compares names.
 ///
 /// Consolidates image srcset rewriting, code copy button injection, base path
 /// URL rewriting, analytics injection, and link extraction into a single pass.
 fn post_process_html_files(
     output_dir: &Path,
     ctx: &HtmlPostProcessContext,
+    deferred_pages: Vec<(PathBuf, String)>,
+    folding: names::NameFolding,
 ) -> Result<links::LinkCheckResult> {
     // Walk ALL files once to build valid URL set and collect HTML entries
-    let all_files: Vec<_> = WalkDir::new(output_dir)
+    let all_files: Vec<PathBuf> = WalkDir::new(output_dir)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
+        .map(|e| e.into_path())
         .collect();
 
-    let valid_urls = links::build_valid_urls_from_entries(output_dir, &all_files);
+    // A file a later step wrote to the same path replaced the page before
+    // pages were deferred; keep it that way. Among deferred pages for one file
+    // the last one's HTML wins under the first one's name, as with the
+    // sequential writes they replace.
+    let on_disk: HashSet<std::borrow::Cow<'_, Path>> =
+        all_files.iter().map(|p| folding.key(p)).collect();
+    let mut deferred = DedupWrites::new(folding);
+    for (path, html) in deferred_pages {
+        if !on_disk.contains(&folding.key(&path)) {
+            deferred.push(path, html);
+        }
+    }
+    drop(on_disk);
+    let deferred = deferred.into_files();
 
-    let html_entries: Vec<_> = all_files
+    let valid_urls = links::build_valid_urls_from_paths(
+        output_dir,
+        all_files
+            .iter()
+            .chain(deferred.iter().map(|(p, _)| p))
+            .map(PathBuf::as_path),
+    );
+
+    enum Source {
+        Disk,
+        Memory(String),
+    }
+    let mut pages: Vec<(PathBuf, Source)> = all_files
         .into_iter()
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "html"))
+        .filter(|p| p.extension().is_some_and(|ext| ext == "html"))
+        .map(|p| (p, Source::Disk))
+        .chain(
+            deferred
+                .into_iter()
+                .map(|(p, html)| (p, Source::Memory(html))),
+        )
         .collect();
+    // Sorted, so link problems are reported in the same order on every
+    // filesystem (directory walk order is not).
+    pages.sort_by(|a, b| a.0.cmp(&b.0));
 
-    // Per-file link check result or error
-    let results: Vec<std::result::Result<links::PageRefCheck, PageError>> = html_entries
-        .par_iter()
-        .map(|entry| {
-            let original = fs::read_to_string(entry.path()).map_err(PageError::from)?;
+    let parents: std::collections::BTreeSet<&Path> = pages
+        .iter()
+        .filter(|(_, src)| matches!(src, Source::Memory(_)))
+        .filter_map(|(path, _)| path.parent())
+        .collect();
+    for parent in parents {
+        fs::create_dir_all(parent)?;
+    }
+
+    // Pages go through in batches: each batch is transformed and link-checked
+    // on the main pool, then written through the small I/O pool (see
+    // `io_pool`). Only one batch of final HTML is held at a time.
+    let process =
+        |(path, source): (PathBuf, Source)| -> std::result::Result<PostProcessed, PageError> {
+            let (original, must_write) = match source {
+                Source::Disk => (fs::read_to_string(&path).map_err(PageError::from)?, false),
+                Source::Memory(html) => (html, true),
+            };
 
             let mut html = original.clone();
 
@@ -3444,30 +3534,43 @@ fn post_process_html_files(
                 html = mermaid::inject_mermaid(&html);
             }
 
-            // Only write if something changed
-            if html != original {
-                fs::write(entry.path(), &html).map_err(PageError::from)?;
-            }
+            // Deferred pages are written here for the first time; pages
+            // already on disk only when something changed.
+            let changed = must_write || html != original;
 
             // 7. Validate internal links and asset references in the final HTML
-            let rel_path = entry
-                .path()
+            let rel_path = path
                 .strip_prefix(output_dir)
-                .unwrap_or(entry.path())
+                .unwrap_or(&path)
                 .to_string_lossy()
                 .replace('\\', "/");
-            Ok(links::check_page_refs(
-                &html,
-                &rel_path,
-                &valid_urls,
-                ctx.base_path,
-            ))
-        })
-        .collect();
+            let refs = links::check_page_refs(&html, &rel_path, &valid_urls, ctx.base_path);
+            Ok((refs, changed.then_some((path, html))))
+        };
+    let mut results = Vec::with_capacity(pages.len());
+    let mut pages = pages.into_iter();
+    loop {
+        let batch: Vec<(PathBuf, Source)> = pages.by_ref().take(POST_PROCESS_BATCH).collect();
+        if batch.is_empty() {
+            break;
+        }
+        let processed: Vec<std::result::Result<PostProcessed, PageError>> =
+            batch.into_par_iter().map(process).collect();
+        let mut writes = Vec::new();
+        for item in processed {
+            let (refs, write) = item?;
+            results.push(refs);
+            writes.extend(write);
+        }
+        on_io_pool(|| {
+            writes
+                .par_iter()
+                .try_for_each(|(path, html)| fs::write(path, html))
+        })?;
+    }
 
     let mut check = links::LinkCheckResult::default();
-    for result in results {
-        let page = result?;
+    for page in results {
         check.total_links_checked += page.checked;
         check.broken_links.extend(page.broken_links);
         check.missing_assets.extend(page.missing_assets);
@@ -4051,6 +4154,133 @@ fn rewrite_source_links(
     (page_sources, problems)
 }
 
+/// Write many generated files at once: create each distinct parent directory
+/// once (in sorted order), then write the files on the rayon pool. Rendering
+/// is already parallel; writing 10,000 files one by one on the calling thread
+/// was one of the slowest parts of large builds. When two entries share a path
+/// the last one wins, as with sequential writes, and every path is written
+/// once, so the output does not depend on the write order.
+/// Whether a markdown copy has a name Steps 4-7 also write (a listing's
+/// `index.md`, the site's `sitemap.md`).
+fn is_listing_md_name(path: &Path) -> bool {
+    path.file_name()
+        .is_some_and(|name| name == "index.md" || name == "sitemap.md")
+}
+
+/// Files being written on a background thread (see [`write_files_parallel`]).
+/// Dropping it without [`BackgroundWrites::finish`] (an early `?` return)
+/// still waits for the writes, so a failed build never writes into an output
+/// directory that is being cleaned up.
+struct BackgroundWrites(Option<std::thread::JoinHandle<Result<GeneratedFiles>>>);
+
+/// Generated files: output path and contents.
+type GeneratedFiles = Vec<(PathBuf, String)>;
+
+impl BackgroundWrites {
+    /// Write `files` in the background; `finish` hands back the ones `keep`
+    /// selects, and the rest are freed as soon as they are written.
+    fn spawn(files: GeneratedFiles, keep: fn(&Path) -> bool, folding: names::NameFolding) -> Self {
+        Self(Some(std::thread::spawn(move || {
+            write_files_parallel(&files, folding)?;
+            Ok(files.into_iter().filter(|(path, _)| keep(path)).collect())
+        })))
+    }
+
+    /// Wait for the writes; returns the written files `keep` selected.
+    fn finish(mut self) -> Result<GeneratedFiles> {
+        match self.0.take() {
+            Some(handle) => handle
+                .join()
+                .map_err(|_| PageError::Build("writing markdown copies panicked".into()))?,
+            None => Ok(Vec::new()),
+        }
+    }
+}
+
+impl Drop for BackgroundWrites {
+    fn drop(&mut self) {
+        if let Some(handle) = self.0.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+/// Files to write, one per file the output file system sees: entries whose
+/// paths name the same file (by [`names::NameFolding::key`]) collapse into the
+/// first entry's path with the last entry's contents, which is what writing
+/// them one after another leaves on disk. So parallel writes never race on one
+/// file, and the result is the same on every run.
+struct DedupWrites<P, C> {
+    folding: names::NameFolding,
+    index: HashMap<PathBuf, usize>,
+    files: Vec<(P, C)>,
+}
+
+impl<P: AsRef<Path>, C> DedupWrites<P, C> {
+    fn new(folding: names::NameFolding) -> Self {
+        Self {
+            folding,
+            index: HashMap::new(),
+            files: Vec::new(),
+        }
+    }
+
+    fn push(&mut self, path: P, contents: C) {
+        let key = self.folding.key(path.as_ref()).into_owned();
+        match self.index.get(&key) {
+            Some(&i) => self.files[i].1 = contents,
+            None => {
+                self.index.insert(key, self.files.len());
+                self.files.push((path, contents));
+            }
+        }
+    }
+
+    fn into_files(self) -> Vec<(P, C)> {
+        self.files
+    }
+}
+
+fn write_files_parallel(files: &[(PathBuf, String)], folding: names::NameFolding) -> Result<()> {
+    let mut dedup = DedupWrites::new(folding);
+    for (path, contents) in files {
+        dedup.push(path.as_path(), contents.as_str());
+    }
+    let files = dedup.into_files();
+    let parents: std::collections::BTreeSet<&Path> =
+        files.iter().filter_map(|(path, _)| path.parent()).collect();
+    for parent in parents {
+        fs::create_dir_all(parent)?;
+    }
+    on_io_pool(|| {
+        files
+            .par_iter()
+            .try_for_each(|(path, contents)| fs::write(path, contents))
+    })?;
+    Ok(())
+}
+
+/// Run bulk file writes. Creating a file is a kernel-bound operation that
+/// stops scaling after a few threads: on macOS (APFS, even on a RAM disk)
+/// 20,000 creates took 0.6 s on 4 threads and 0.8 s on 14, because the threads
+/// contend inside the kernel. So on macOS writes go through a small dedicated
+/// pool; elsewhere (not measured) they use the main pool as before.
+fn on_io_pool<R: Send>(f: impl FnOnce() -> R + Send) -> R {
+    match io_pool() {
+        Some(pool) => pool.install(f),
+        None => f(),
+    }
+}
+
+fn io_pool() -> Option<&'static rayon::ThreadPool> {
+    if !cfg!(target_os = "macos") {
+        return None;
+    }
+    static POOL: std::sync::OnceLock<Option<rayon::ThreadPool>> = std::sync::OnceLock::new();
+    POOL.get_or_init(|| rayon::ThreadPoolBuilder::new().num_threads(4).build().ok())
+        .as_ref()
+}
+
 fn url_to_output_path(output_dir: &Path, url: &str) -> std::path::PathBuf {
     let clean = url.trim_matches('/');
     output_dir.join(format!("{clean}.html"))
@@ -4584,6 +4814,100 @@ mod tests {
     use crate::content::Frontmatter;
     use std::collections::{BTreeMap, HashSet};
     use std::path::{Path, PathBuf};
+
+    fn post_ctx<'a>(
+        manifest: &'a HashMap<String, images::ProcessedImage>,
+        rewrites: &'a HashMap<String, String>,
+    ) -> HtmlPostProcessContext<'a> {
+        HtmlPostProcessContext {
+            image_manifest: manifest,
+            lazy_loading: false,
+            needs_image_rewrite: false,
+            subdomain_rewrites: rewrites,
+            base_path: "",
+            analytics: None,
+            mermaid: false,
+        }
+    }
+
+    #[test]
+    fn test_write_files_parallel_creates_dirs_and_last_entry_wins() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("posts/a.md");
+        let b = dir.path().join("deep/nested/b.md");
+        let files = vec![
+            (a.clone(), "first".to_string()),
+            (b.clone(), "b".to_string()),
+            (a.clone(), "second".to_string()),
+        ];
+        write_files_parallel(&files, names::NameFolding::default()).unwrap();
+        assert_eq!(fs::read_to_string(&a).unwrap(), "second");
+        assert_eq!(fs::read_to_string(&b).unwrap(), "b");
+    }
+
+    #[test]
+    fn test_post_process_writes_deferred_pages_once_processed() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path();
+        // On disk: an index linking to a page that exists only in memory.
+        fs::write(
+            out.join("index.html"),
+            r#"<html><body><a href="/posts/hello">x</a><a href="/posts/missing">y</a></body></html>"#,
+        )
+        .unwrap();
+        let deferred = vec![(
+            out.join("posts/hello.html"),
+            "<html><body><pre><code>fn main() {}</code></pre></body></html>".to_string(),
+        )];
+        let (manifest, rewrites) = (HashMap::new(), HashMap::new());
+        let check = post_process_html_files(
+            out,
+            &post_ctx(&manifest, &rewrites),
+            deferred,
+            names::NameFolding::default(),
+        )
+        .unwrap();
+
+        // Written, and post-processed (code-copy button injected) before the write.
+        let written = fs::read_to_string(out.join("posts/hello.html")).unwrap();
+        assert_ne!(
+            written,
+            "<html><body><pre><code>fn main() {}</code></pre></body></html>"
+        );
+        assert!(written.contains("fn main() {}"));
+        // The in-memory page is a valid link target; the missing one is not.
+        let hrefs: Vec<&str> = check.broken_links.iter().map(|l| l.href.as_str()).collect();
+        assert_eq!(hrefs, vec!["/posts/missing"]);
+    }
+
+    #[test]
+    fn test_post_process_file_written_later_beats_deferred_page() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path();
+        fs::create_dir_all(out.join("tags")).unwrap();
+        fs::write(out.join("tags/rust.html"), "<p>tag page</p>").unwrap();
+        let deferred = vec![
+            (out.join("tags/rust.html"), "<p>item page</p>".to_string()),
+            (out.join("a.html"), "<p>first</p>".to_string()),
+            (out.join("a.html"), "<p>second</p>".to_string()),
+        ];
+        let (manifest, rewrites) = (HashMap::new(), HashMap::new());
+        post_process_html_files(
+            out,
+            &post_ctx(&manifest, &rewrites),
+            deferred,
+            names::NameFolding::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            fs::read_to_string(out.join("tags/rust.html")).unwrap(),
+            "<p>tag page</p>"
+        );
+        assert_eq!(
+            fs::read_to_string(out.join("a.html")).unwrap(),
+            "<p>second</p>"
+        );
+    }
 
     #[test]
     fn test_effective_robots() {

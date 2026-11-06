@@ -1,0 +1,7 @@
+base_url = "http://localhost:3000"
+title = "Benchmark Site"
+compile_sass = false
+build_search_index = false
+
+# Zola 0.22+ dropped `highlight_code`; leaving out [markdown.highlighting]
+# keeps syntax highlighting off, as in the other skeletons.

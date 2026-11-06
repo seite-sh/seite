@@ -1884,3 +1884,156 @@ fn test_build_refuses_traversal_slug_and_env_access() {
         }
     }
 }
+
+#[test]
+fn test_build_item_page_replaces_public_file_at_same_path() {
+    // `public/` is copied before pages render; a page at the same path has
+    // always replaced the copy (pages are written after post-processing now).
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Collide", "posts");
+    let site_dir = tmp.path().join("site");
+    fs::create_dir_all(site_dir.join("public/posts")).unwrap();
+    fs::write(
+        site_dir.join("public/posts/hello-world.html"),
+        "<p>public copy</p>",
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let post = fs::read_to_string(site_dir.join("dist/posts/hello-world.html")).unwrap();
+    assert!(!post.contains("public copy"));
+    assert!(post.contains("Hello World"));
+}
+
+/// Whether `dir`'s file system treats `a` and `A` as one name.
+fn case_insensitive_fs(dir: &std::path::Path) -> bool {
+    let probe = dir.join("case-probe");
+    fs::write(&probe, "").unwrap();
+    let folded = dir.join("CASE-PROBE").exists();
+    fs::remove_file(&probe).unwrap();
+    folded
+}
+
+#[test]
+fn test_build_alias_differing_only_in_case_from_a_page() {
+    // On a case-insensitive file system `/Posts/Hello-World` is the page's own
+    // file: the alias must be skipped with a warning, never written over it.
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Collide", "posts");
+    let site_dir = tmp.path().join("site");
+    fs::write(
+        site_dir.join("content/posts/2026-01-02-other.md"),
+        "---\ntitle: Other\ndate: 2026-01-02\naliases: [\"/Posts/Hello-World\"]\n---\nOTHER-BODY\n",
+    )
+    .unwrap();
+
+    let out = page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let posts = site_dir.join("dist/posts");
+    let names: Vec<String> = fs::read_dir(&posts)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    if case_insensitive_fs(tmp.path()) {
+        assert!(
+            stderr.contains("alias-collision") || stderr.contains("was skipped"),
+            "{stderr}"
+        );
+        assert!(names.contains(&"hello-world.html".to_string()), "{names:?}");
+        let page = fs::read_to_string(posts.join("hello-world.html")).unwrap();
+        assert!(page.contains("Hello World"), "{page}");
+        let redirects = fs::read_to_string(site_dir.join("dist/_redirects")).unwrap_or_default();
+        assert!(!redirects.contains("/Posts/Hello-World"), "{redirects}");
+    } else {
+        // Distinct files: the alias gets its own redirect page.
+        assert!(site_dir.join("dist/Posts/Hello-World.html").exists());
+        let page = fs::read_to_string(posts.join("hello-world.html")).unwrap();
+        assert!(page.contains("Hello World"), "{page}");
+    }
+}
+
+#[test]
+fn test_build_slugs_differing_only_in_case_are_deterministic() {
+    // Two pages whose slugs name one file on a case-insensitive file system
+    // leave what writing them in order would: the first name, the last page.
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Collide", "pages");
+    let site_dir = tmp.path().join("site");
+    fs::write(
+        site_dir.join("content/pages/a.md"),
+        "---\ntitle: Lower\nslug: dup\n---\nLOWER-BODY\n",
+    )
+    .unwrap();
+    fs::write(
+        site_dir.join("content/pages/b.md"),
+        "---\ntitle: Upper\nslug: Dup\n---\nUPPER-BODY\n",
+    )
+    .unwrap();
+
+    let mut seen = Vec::new();
+    for _ in 0..4 {
+        page_cmd()
+            .arg("build")
+            .current_dir(&site_dir)
+            .assert()
+            .success();
+        let mut files: Vec<(String, String)> = fs::read_dir(site_dir.join("dist"))
+            .unwrap()
+            .map(|e| e.unwrap())
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .eq_ignore_ascii_case("dup.html")
+            })
+            .map(|e| {
+                (
+                    e.file_name().to_string_lossy().into_owned(),
+                    fs::read_to_string(e.path()).unwrap(),
+                )
+            })
+            .collect();
+        files.sort();
+        seen.push(files);
+    }
+    assert!(seen.windows(2).all(|w| w[0] == w[1]), "builds differ");
+    if case_insensitive_fs(tmp.path()) {
+        assert_eq!(seen[0].len(), 1, "{:?}", seen[0]);
+        assert!(seen[0][0].1.contains("UPPER-BODY") || seen[0][0].1.contains("LOWER-BODY"));
+    } else {
+        assert_eq!(seen[0].len(), 2);
+    }
+}
+
+#[test]
+fn test_build_item_markdown_copy_replaces_generated_sitemap_md() {
+    // Item `.md` copies are written in the background while sitemap.md is
+    // generated; an item at /sitemap has always owned sitemap.md.
+    let tmp = TempDir::new().unwrap();
+    init_site(&tmp, "site", "Collide", "posts,pages");
+    let site_dir = tmp.path().join("site");
+    fs::write(
+        site_dir.join("content/pages/sitemap.md"),
+        "---\ntitle: Sitemap page\n---\nITEM-SITEMAP-BODY\n",
+    )
+    .unwrap();
+
+    page_cmd()
+        .arg("build")
+        .current_dir(&site_dir)
+        .assert()
+        .success();
+
+    let md = fs::read_to_string(site_dir.join("dist/sitemap.md")).unwrap();
+    assert!(md.contains("ITEM-SITEMAP-BODY"), "{md}");
+}

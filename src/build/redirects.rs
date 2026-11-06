@@ -33,6 +33,19 @@ pub fn generate_redirects_with_diagnostics(
     items: &[&ContentItem],
     output_dir: &Path,
 ) -> Result<(usize, Vec<Diagnostic>)> {
+    generate_redirects_with_pending(config, items, output_dir, &|_| false)
+}
+
+/// [`generate_redirects_with_diagnostics`], where `is_pending` says whether a
+/// path names a rendered page the build has not written to disk yet; such a
+/// page counts as already written. It must compare paths the way the output
+/// file system does (case-insensitively on APFS/NTFS), like `exists()`.
+pub fn generate_redirects_with_pending(
+    config: &SiteConfig,
+    items: &[&ContentItem],
+    output_dir: &Path,
+    is_pending: &dyn Fn(&Path) -> bool,
+) -> Result<(usize, Vec<Diagnostic>)> {
     let base = config.site.base_url.trim_end_matches('/');
     let mut diagnostics = Vec::new();
 
@@ -45,7 +58,7 @@ pub fn generate_redirects_with_diagnostics(
                 continue;
             }
             let output_path = output_dir.join(format!("{clean}.html"));
-            if output_path.exists() {
+            if is_pending(&output_path) || output_path.exists() {
                 let mut d = Diagnostic::warning(
                     "alias-collision",
                     format!(

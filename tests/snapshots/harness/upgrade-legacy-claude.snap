@@ -35,7 +35,7 @@ Write .claude/rules/private-collections.md
 Write .claude/launch.json (dev server for the Claude desktop app's preview)
 Write .claude/skills/seite/SKILL.md (/seite skill)
 Write .claude/skills/seite/reference/ (12 files)
-Write .seite/docs/ (19 doc pages for seite 0.21.1)
+Write .seite/docs/ (19 doc pages for seite 0.21.2)
 Append to .gitignore (/.seite/docs/, /.seite/dev.json, /.seite/cache/, /.seite/upgrade-brief.md)
 Update Project instructions (per-agent setup table)
 Update Project instructions (context rules index)

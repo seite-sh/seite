@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ site.title }}</h1>
+{% for collection in collections %}
+<ul>
+{% for item in collection.items %}
+<li><a href="{{ item.url }}">{{ item.title }}</a></li>
+{% endfor %}
+</ul>
+{% endfor %}
+{% endblock %}
